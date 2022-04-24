@@ -1,0 +1,54 @@
+---
+title: "FinalProject"
+author: "Binh Ho"
+date: "4/24/2022"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+library(dplyr)
+equip_loss <- read.csv("russia_losses_equipment.csv")
+person_loss <- read.csv("russia_losses_personnel.csv")
+exchange_rate <- read.csv("USD_RUB.csv")
+equip_loss = equip_loss %>%
+  mutate(date = as.Date(date))
+
+equip_loss$aircraft_per <- c(equip_loss$aircraft[1],diff(equip_loss$aircraft))
+equip_loss$helicopter_per <- c(equip_loss$helicopter[1],diff(equip_loss$helicopter))
+equip_loss$tank_per <- c(equip_loss$tank[1],diff(equip_loss$tank))
+equip_loss$APC_per <- c(equip_loss$APC[1],diff(equip_loss$APC))
+equip_loss$field_artillery_per <- c(equip_loss$field.artillery[1],diff(equip_loss$field.artillery))
+equip_loss$MRL_per <- c(equip_loss$MRL[1],diff(equip_loss$MRL))
+equip_loss$millitary_auto_per <- c(equip_loss$millitary.auto[1],diff(equip_loss$millitary.auto))
+equip_loss$fuel_tank_per <- c(equip_loss$fuel.tank[1],diff(equip_loss$fuel.tank))
+equip_loss$drone_per <- c(equip_loss$drone[1],diff(equip_loss$drone))
+equip_loss$naval_ship_per <- c(equip_loss$naval.ship[1],diff(equip_loss$naval.ship))
+equip_loss$anti_aircraft_warfare_per <- c(equip_loss$anti.aircraft.warfare[1],diff(equip_loss$anti.aircraft.warfare))
+equip_loss$special_equipment_per <- c(equip_loss$special.equipment[1],diff(equip_loss$special.equipment))
+equip_loss$mobile_SRBM_system_per <- c(equip_loss$mobile.SRBM.system[1],diff(equip_loss$mobile.SRBM.system))
+
+equip_loss$weighted_loss = c(equip_loss$tank*0.009 + equip_loss$aircraft*0.0716 + equip_loss$field_artillery_per*0.25 + equip_loss$helicopter*0.03444+equip_loss$naval_ship_per*0.6346)
+
+
+person_loss = person_loss %>%
+  mutate(date = as.Date(date))
+
+person_loss$personnel_per <- c(person_loss$personnel[1],diff(person_loss$personnel))
+
+person_loss$POW_per <- c(person_loss$POW[1],diff(person_loss$POW))
+
+exchange_rate = exchange_rate %>%
+  mutate(Date = as.Date(Date, "%b %d %Y"))
+
+joined_loss = left_join(equip_loss, person_loss, by = "date")
+
+head(joined_loss)
+
+head(equip_loss)
+head(person_loss)
+head(exchange_rate)
+```
+
