@@ -1,0 +1,152 @@
+---
+title: "Final Project"
+author: "Binh Ho, Kavi Jakes, Harrison Zhang"
+date: "4/24/2022"
+output: html_document
+---
+## Introduction
+Countries around the world opposed to Russia’s invasion of and war against Ukraine have weighed implementing economic sanctions against Russia in attempts to dissuade them and weaken their war efforts. While these global powers are considering how weakening Russia’s economy might impact their success in the war, we are setting out to examine a potential effect in the opposite direction — how Russia’s success in the war influences their economy. We will use Russian military equipment lost as a proxy for their success in the war, with less equipment lost corresponding with greater success, and the ruble-to-U.S. dollar exchange rate as a measure of the strength of Russia’s economy.
+
+## Datasets
+Russian Military Losses (by day)
+https://www.kaggle.com/datasets/piterfm/2022-ukraine-russian-war
+
+USD/RUB Exchange Rate (by day)
+https://www.kaggle.com/datasets/fedesoriano/usd-rub-historical-data
+
+
+
+## Research Question
+Are Russian military losses in the Ukraine-Russia war a good predictor of the foreign exchange rate between the ruble and US dollar? 
+
+
+## Hypothesis
+There is a strong positive correlation between Russian military equipment losses (by day) across all categories (aircrafts, helicopters, tanks, etc.) and the ruble-to-U.S. dollar exchange rate, such that we can claim that military equipment losses is a strong predictor of exchange rate.
+
+## Proposed Solution
+From the two datasets, we will extract the values of the Russian ruble and the corresponding Russian military equipment losses in a given day. Then, we will plot the values of the Russian ruble against the Russian military equipment losses, from which we will calculate and plot the regression line for the data points. We will then calculate the Pearson correlation coefficient to determine the direction and strength of the correlation between the two random variables.
+
+In the military losses dataset, losses in each category are cumulative from the previous day, so we will first clean the data by parsing through the dataset and converting it into a dataset of losses each day. We will also convert the “date” columns in the datasets into Date objects so that we can join the two datasets more smoothly.
+
+```{r, include=FALSE}
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+library(dplyr)
+```
+```{r}
+# Reading in all csv files as dataframes
+equip_loss <- read.csv("russia_losses_equipment.csv")
+exchange_rate <- read.csv("USD_RUB.csv")
+## Explanation of how we altered data (weighted loss)
+# Since equipment loss in the original dataset is cumulative, we calculated each value as a difference between it and the previous value, such that we could have equipment loss by day (not cumulative).
+equip_loss = equip_loss %>%
+  mutate(date = as.Date(date))
+equip_loss$aircraft_per <- c(equip_loss$aircraft[1],diff(equip_loss$aircraft))
+equip_loss$helicopter_per <- c(equip_loss$helicopter[1],diff(equip_loss$helicopter))
+equip_loss$tank_per <- c(equip_loss$tank[1],diff(equip_loss$tank))
+equip_loss$APC_per <- c(equip_loss$APC[1],diff(equip_loss$APC))
+equip_loss$field_artillery_per <- c(equip_loss$field.artillery[1],diff(equip_loss$field.artillery))
+equip_loss$MRL_per <- c(equip_loss$MRL[1],diff(equip_loss$MRL))
+equip_loss$millitary_auto_per <- c(equip_loss$millitary.auto[1],diff(equip_loss$millitary.auto))
+equip_loss$fuel_tank_per <- c(equip_loss$fuel.tank[1],diff(equip_loss$fuel.tank))
+equip_loss$drone_per <- c(equip_loss$drone[1],diff(equip_loss$drone))
+equip_loss$naval_ship_per <- c(equip_loss$naval.ship[1],diff(equip_loss$naval.ship))
+equip_loss$anti_aircraft_warfare_per <- c(equip_loss$anti.aircraft.warfare[1],diff(equip_loss$anti.aircraft.warfare))
+equip_loss$special_equipment_per <- c(equip_loss$special.equipment[1],diff(equip_loss$special.equipment))
+equip_loss$mobile_SRBM_system_per <- c(equip_loss$mobile.SRBM.system[1],diff(equip_loss$mobile.SRBM.system))
+```
+
+## Data Manipulation
+### Loss score
+To begin our analysis, we began with an assumption that losses of different types of equipment would affect the exchange rate in varying degrees, so we weighted the losses with a “loss score.” To calculate the loss score, we pulled data on Russian spending on types of equipment from a crowd-sourced Fandom wiki. Due to inconsistencies in naming of equipment type between the Kaggle dataset of equipment and the Fandom wiki, we limited our research to five types of equipment: aircraft, helicopters, tanks, field artillery, and naval ships. We also chose to exclude personnel losses due to the difficulty to tie a quantitative value to human life.
+
+The link to the wiki is https://nation-creation.fandom.com/wiki/Modern_Day_Military_Pricing_List#RUSSIAN_MILITARY_EQUIPMENT.
+
+To calculate the loss score, we summed the individual spending on each of the five types of equipment together and used the percentage each type took up in overall spending. These percentages became their loss score. In our case, the weighted loss scores for aircraft, helicopters, tanks, field artillery, and naval ships were 0.0716, 0.0344, 0.0092, 0.2501, and 0.6346, respectively. 
+
+
+
+```{r}
+# Calculated weighted loss based upon a formula that placed high value on losing expensive equipment
+equip_loss$weighted_loss = c(equip_loss$tank*0.0092 + equip_loss$aircraft*0.0716 + equip_loss$field_artillery_per*0.2501 + equip_loss$helicopter*0.0344+equip_loss$naval_ship_per*0.6346)
+```
+### Price Data
+We chose to use the exchange rate’s close price for each day in order to allow for as much of the effect of Russian equipment losses that occurred in a day to be captured by the price difference.
+
+```{r}
+# Makes modifications to exchange rate dataframe, converting the dates to a Date format, converting the change percentages to numbers rather than strings, and calculating real difference in exchange rate from day to day
+exchange_rate = exchange_rate %>%
+  mutate(Date = as.Date(Date, "%b %d %Y")) %>%
+  mutate(date = Date, realchange = Price - Open)
+head(equip_loss)
+head(exchange_rate)
+# We merge the two dataframes into one we will use for our analysis
+full_frame <- full_join(equip_loss, exchange_rate, by = "date")
+full_frame <- full_frame %>%
+  filter(day < 51)
+head(full_frame)
+```
+
+### Weekends
+Since Forex markets are only open on business days, we had to make decisions on how to handle losses accumulated over weekends between the Friday and subsequent Monday prices. Under our hypothesis that losses have an effect on exchange rate, it was important to ensure that these loss points for Saturdays and Sundays were not swept under the rug and could be measured somehow. We chose to divide the difference between Monday’s close price and the prior Friday’s close price by 3 and use it as the exchange rate differential for Saturday, Sunday, and Monday. While imperfect, it was the best we could do to account for weekend losses while being limited by exchange rates only being available on weekdays. We assumed that weekend losses would be reflected in Monday’s market, and thus a daily average calculated by dividing the difference between Friday’s close rate and Monday’s close rate by 3 would be suitable and appropriate.
+
+
+```{r}
+alt_real = c(full_frame$realchange[1], full_frame$realchange[2]) # Initializes a new vector that eventually will replace the realchange column. Since the resulting for loop involves examining the two prior values, which will not work for the first two values of the realchange column, these values are added in as the first two values of the vector.
+for(i in 3:49){ # 3rd row until the end of the full_frame dataframe
+  if((is.na(full_frame$realchange[i-2]))&(is.na(full_frame$realchange[i-1]))){ # Checks if the two previous days both have NA for realchange, i.e. the two previous days are weekends
+    real_3 = full_frame$realchange[i] / 3 # Divides the change value for Monday by 3 to obtain an average of the change over Saturday, Sunday, and Monday
+  } else{ # Day is not Monday
+    real_3 = full_frame$realchange[i]
+  }
+  alt_real = c(alt_real, real_3) # Adds new value to the new realchange vector
+}
+# Running this for loop changes Sunday's NA values for exchange rate to the average calculated above
+for(i in 1:49){ # Over all values in the alt_pct and alt_real vectors
+  if(is.na(alt_real[i])){ # If day is Saturday or Sunday
+    alt_real[i] = alt_real[i + 1] # Sunday value set to equal Monday value
+  }
+}
+# Running the loop again changes Saturday's NA values for exchange rate to the average
+for(i in 1:49){
+  if(is.na(alt_real[i])){
+    alt_real[i] = alt_real[i + 1] # Saturday value set to equal Sunday value
+  }
+}
+full_frame <- mutate(full_frame, realchange = alt_real) # Changes realchange column to be alt_real vector, such that NA values on Saturday and Sunday are replaced with the average change value calculated based on Monday's value.
+```
+
+## Preliminary Analysis
+Below are graphs of the loss score and the ruble-to-dollar exchange rate since February 25, 2022. They give a sense for how the values have changed over time.
+
+```{r}
+ggplot(full_frame) +
+  geom_line(aes(x = date, y = weighted_loss))
+ggplot(full_frame) +
+  geom_line(aes(x = date, y = realchange))
+```
+
+## Method of Analysis
+We will plot the absolute changes in values of the Russian ruble relative to the U.S. dollar against the loss score calculated in our data manipulation step, from which we will calculate and plot the regression line for the data points. We will then calculate the Pearson correlation coefficient to determine the direction and strength of the correlation between the two random variables.
+
+## Analysis and Results
+```{r}
+model <- lm(realchange ~ weighted_loss, data = full_frame) # Regression with real_change as the Y and weighted_loss as the X
+summary(model) # Prints necessary coefficients and p values
+```
+
+The Pearson correlation coefficient between the absolute change in value of the Russian ruble relative to the U.S. dollar and the loss score is -0.2378, which means that there is a relatively weak negative correlation between the absolute change in value of the Russian ruble relative to the U.S. dollar and the loss score. However, the correlation is statistically significant (p = .0294). The value for r-squared is 0.097. This indicates that the loss score accounts for less than 10% of the variability in the absolute change in value of the Russian ruble relative to the U.S. dollar. The regression model using the loss score is a poor predictor of the change in value.
+
+
+```{r}
+# Plot scatterplot of realchange vs. weighted loss, adding the regression line with coefficients generated by the model
+ggplot(full_frame, aes(weighted_loss, realchange)) + 
+  geom_point() +
+  geom_abline(slope = model$coefficients[2],
+              intercept = model$coefficients[1])
+```
+
+## Conclusion
+Based on the results obtained from the aforementioned analysis, our hypothesis that “there is a strong positive correlation between Russian military equipment losses (by day) across all categories (aircrafts, helicopters, tanks, etc.) and the ruble-to-U.S. dollar exchange rate” is rejected. Namely, our analysis suggests that there is a weak negative correlation between Russian military equipment losses (by day) across the 5 chosen categories (aircrafts, helicopters, tanks, naval ships, and field artillery) and the ruble-to-U.S. dollar exchange rate. According to our analysis, an increase in Russian military equipment losses may lead to the appreciation of the Russian ruble (which is not what we expect intuitively). Also, Russian military equipment loss is not a good predictor of the declining foreign exchange rate between the ruble and US dollar.
+
